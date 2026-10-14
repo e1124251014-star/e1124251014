@@ -1,10 +1,239 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>我的個人網站</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>即時天氣預報 Dashboard</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #00c6ff, #0072ff);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .weather-card {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            width: 100%;
+            max-width: 450px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: #fff;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+
+        .search-box input {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            outline: none;
+            border-radius: 25px;
+            background: rgba(255, 255, 255, 0.8);
+            font-size: 16px;
+            color: #333;
+        }
+
+        .search-box button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 25px;
+            background: #ff7e5f;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .search-box button:hover {
+            background: #feb47b;
+        }
+
+        .current-weather {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .city-name {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .temp {
+            font-size: 64px;
+            font-weight: 800;
+            margin: 10px 0;
+        }
+
+        .weather-desc {
+            font-size: 18px;
+            opacity: 0.9;
+        }
+
+        .details {
+            display: flex;
+            justify-content: space-around;
+            background: rgba(255, 255, 255, 0.15);
+            padding: 15px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+        }
+
+        .detail-item {
+            text-align: center;
+        }
+
+        .detail-item span {
+            display: block;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .forecast {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .forecast-day {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 12px 8px;
+            border-radius: 12px;
+            text-align: center;
+            flex: 1;
+        }
+
+        .forecast-day .day {
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .forecast-day .f-temp {
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .loading {
+            text-align: center;
+            font-size: 18px;
+        }
+    </style>
 </head>
 <body>
-    <h1>你好！這是我的第一個 GitHub Pages 網站。</h1>
+
+<div class="weather-card">
+    <div class="search-box">
+        <input type="text" id="cityInput" placeholder="輸入城市名稱 (英文, 如 Taipei)" value="Taipei">
+        <button onclick="getWeather()">搜尋</button>
+    </div>
+
+    <div id="weatherContent">
+        <div class="loading">正在載入氣象資料...</div>
+    </div>
+</div>
+
+<script>
+    // WMO 氣象代碼對照表
+    const weatherCodes = {
+        0: "晴朗", 1: "大致晴朗", 2: "多雲", 3: "陰天",
+        45: "有霧", 48: "霧淞",
+        51: "輕微毛毛雨", 53: "毛毛雨", 55: "濃毛毛雨",
+        61: "小雨", 63: "中雨", 65: "大雨",
+        80: "陣雨", 81: "強烈陣雨", 82: "暴雨",
+        95: "雷陣雨"
+    };
+
+    async function getWeather() {
+        const city = document.getElementById('cityInput').value.trim();
+        const content = document.getElementById('weatherContent');
+        
+        if (!city) return;
+
+        content.innerHTML = '<div class="loading">查詢中...</div>';
+
+        try {
+            // 1. 取得城市的經緯度 (GeoCoding API)
+            const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=zh&format=json`);
+            const geoData = await geoRes.json();
+
+            if (!geoData.results || geoData.results.length === 0) {
+                content.innerHTML = '<div class="loading">找不到該城市，請重新嘗試！</div>';
+                return;
+            }
+
+            const { latitude, longitude, name } = geoData.results[0];
+
+            // 2. 取得天氣預報資料 (Weather API)
+            const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&timezone=auto`);
+            const weatherData = await weatherRes.json();
+
+            const current = weatherData.current_weather;
+            const daily = weatherData.daily;
+
+            // 3. 渲染畫面
+            let forecastHTML = '';
+            for (let i = 1; i <= 4; i++) {
+                const date = new Date(daily.time[i]);
+                const dayName = date.toLocaleDateString('zh-TW', { weekday: 'short' });
+                const maxTemp = Math.round(daily.temperature_2m_max[i]);
+                const minTemp = Math.round(daily.temperature_2m_min[i]);
+
+                forecastHTML += `
+                    <div class="forecast-day">
+                        <div class="day">${dayName}</div>
+                        <div class="f-temp">${maxTemp}° / ${minTemp}°</div>
+                    </div>
+                `;
+            }
+
+            content.innerHTML = `
+                <div class="current-weather">
+                    <div class="city-name">${name}</div>
+                    <div class="temp">${Math.round(current.temperature)}°C</div>
+                    <div class="weather-desc">${weatherCodes[current.weathercode] || "多雲"}</div>
+                </div>
+
+                <div class="details">
+                    <div class="detail-item">
+                        <span>風速</span>
+                        <strong>${current.windspeed} km/h</strong>
+                    </div>
+                    <div class="detail-item">
+                        <span>風向</span>
+                        <strong>${current.winddirection}°</strong>
+                    </div>
+                </div>
+
+                <div class="forecast">
+                    ${forecastHTML}
+                </div>
+            `;
+
+        } catch (error) {
+            console.error(error);
+            content.innerHTML = '<div class="loading">載入失敗，請稍後再試。</div>';
+        }
+    }
+
+    // 頁面初次載入時自動執行一次
+    getWeather();
+</script>
+
 </body>
 </html>
